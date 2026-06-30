@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { spawn } from 'child_process';
 import path from 'path';
 
+import fs from 'fs';
+
 function isLikelyUrl(value) {
   try {
     const u = new URL(value);
@@ -16,7 +18,17 @@ export async function POST(request) {
     const body = await request.json();
     const { urls } = body || {};
 
-    const apiKey = process.env.GEMINI_API_KEY;
+    let apiKey = process.env.GEMINI_API_KEY;
+    try {
+      const envContent = fs.readFileSync(path.join(process.cwd(), '.env'), 'utf8');
+      const match = envContent.match(/^GEMINI_API_KEY=(.*)$/m);
+      if (match && match[1]) {
+        apiKey = match[1].trim().replace(/^["']|["']$/g, '');
+      }
+    } catch (e) {
+      // Fallback
+    }
+
     if (!apiKey) {
       return NextResponse.json(
         { error: 'Server is missing GEMINI_API_KEY. Add it to your .env file and restart the server.' },

@@ -87,10 +87,10 @@ except Exception:  # pragma: no cover
 # Config
 # ──────────────────────────────────────────────────────────────────────────────
 
-TARGET_W = 480
-TARGET_H = 854
+TARGET_W = 1080
+TARGET_H = 1920
 TARGET_RATIO = TARGET_W / TARGET_H
-TARGET_FPS = 30
+TARGET_FPS = 60
 DEFAULT_DURATION = 30.0
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -754,7 +754,7 @@ def _sanitize_pairs(raw: Any, num_pairs: int) -> List[Dict[str, Any]]:
     return cleaned[:num_pairs]
 
 
-def get_gemini_pairs(video_path: Path, num_pairs: int) -> List[Dict[str, float]]:
+def get_gemini_pairs(video_path: Path) -> dict:
     # This function is rewritten to be more robust against common auth issues.
     # It uses the official Python SDK and handles rate limiting with retries.
     try:
@@ -768,6 +768,8 @@ def get_gemini_pairs(video_path: Path, num_pairs: int) -> List[Dict[str, float]]
     import json
 
     log("▶ Analysing video with Gemini API …")
+    from dotenv import load_dotenv
+    load_dotenv(override=True)
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
         raise ValueError("GEMINI_API_KEY environment variable is not set.")
@@ -805,11 +807,25 @@ def get_gemini_pairs(video_path: Path, num_pairs: int) -> List[Dict[str, float]]
             You are a professional YouTube Shorts video editor. Watch this Minecraft shader comparison video carefully.
             Your task is to find exactly {num_pairs} pairs of timestamps showing the BEST before/after shader contrast.
             For each pair, also identify the NAME of the shader pack being shown (e.g. "BSL Shaders", "Complementary Shaders", etc.).
+            
+            CRITICAL VISUAL RULES:
+            - Find gameplay that is FULL SCREEN.
+            - Do NOT select moments with black screens, heavy UI overlays, menus, or obstacles blocking the view.
             - "vanilla_start" is the start of a clearly VANILLA (no shader) moment.
             - "shader_start" is the start of a clearly SHADERS-ON moment.
             - Space the pairs out. Do NOT cluster them all at the start.
-            Return ONLY a valid JSON array, no other text. Format:
-            [{{"shader_name": "...", "vanilla_start": 0.0, "shader_start": 0.0}}]
+            
+            DESCRIPTION TASK:
+            Write an engaging YouTube description using the following template, but replace [SHADER_NAMES] with the actual names you found:
+            "Looking for the best ultra-realistic shaders for Minecraft Pocket Edition (MCPE) and Minecraft Bedrock Edition that work smoothly on lightweight, low-end, and mid-range devices?\\nIn this video, we showcase [SHADER_NAMES] featuring stunning graphics, realistic lighting, beautiful skies, enhanced water reflections, volumetric fog, dynamic shadows, and an immersive next-generation visual experience—all without requiring a high-end phone or an RTX graphics card!\\n\\n✨ Key Features\\nPerformance: Lightweight, FPS-friendly, and optimized for low-end devices.\\nVisuals: Enhanced sky, realistic clouds, vibrant colors, and improved water visuals.\\nLighting: Better sunlight, realistic moonlight, and dynamic shadow effects.\\nAtmosphere: Smooth atmospheric effects and volumetric fog.\\nAccessibility: 100% FREE to download with No RTX Required.\\n\\n🔗 Download Links\\n👉 Get all the shaders featured in this video here: 👇\\nhttps://www.piglixmcmods.dev/\\n\\n💬 Join the Conversation!\\nWhich shader was your favorite? Comment the name below! 👇\\nWhat shader pack or mod should I review next? Let me know in the comments!\\nDon't forget to Like and Subscribe for more Minecraft Bedrock content! 👍\\n🔍 SEO & Keywords (Search Optimization)\\nBSL, Newb, SEUS, SLS, Complementary realistic minecraft shaders, mcpe shaders, render dragon shaders, low-end device shaders, no lag shaders, minecraft, minecraft shaders, realistic minecraft, minecraft mod, minecraft texture pack, minecraft java, minecraft bedrock, best minecraft shaders, gaming shorts, viral minecraft, shader pack tutorial.\\n\\n🏷️ Tags\\n#MinecraftPE #MinecraftShaders #MCPE #BedrockEdition #patchshaders #mcpeshaders #BSLShaders #NewbShaders #SEUSShaders #SLSShaders #ComplementaryShaders"
+            
+            Return ONLY a valid JSON object, no other text. Format:
+            {{
+              "description": "Your full description text here, exactly as generated with newlines",
+              "pairs": [
+                {{"shader_name": "...", "vanilla_start": 0.0, "shader_start": 0.0}}
+              ]
+            }}
             """
             model = google_genai.GenerativeModel(model_name="gemini-1.5-flash")
             response = model.generate_content(
@@ -818,11 +834,17 @@ def get_gemini_pairs(video_path: Path, num_pairs: int) -> List[Dict[str, float]]
                     response_mime_type="application/json"
                 ),
             )
-            # The SDK now automatically parses JSON responses
-            raw_pairs = response.text
-            pairs = _sanitize_pairs(json.loads(raw_pairs), num_pairs)
+            
+            raw_response = json.loads(response.text)
+            desc = raw_response.get("description", "")
+            if desc:
+                desc_escaped = desc.replace("\\n", "\\\\n").replace("\n", "\\n")
+                log(f"GEMINI_DESCRIPTION:{desc_escaped}")
+                
+            raw_pairs = raw_response.get("pairs", [])
+            pairs = _sanitize_pairs(raw_pairs, len(raw_pairs)) # keep however many it found
             log(f"  Gemini returned {len(pairs)} usable pair(s)")
-            return pairs
+            return {"pairs": pairs, "voiceover_script": raw_response.get("voiceover_script", "")}
         except (google_exceptions.ResourceExhausted, google_exceptions.InternalServerError) as e:
             err_str = str(e)
             wait_secs = BASE_WAIT * attempt
@@ -834,7 +856,8 @@ def get_gemini_pairs(video_path: Path, num_pairs: int) -> List[Dict[str, float]]
             break # Exit retry loop on unexpected errors
 
     log("  Using fallback timestamps.")
-    return [{"shader_name": f"Shader Pack {i + 1}", "vanilla_start": 10.0 + i*40, "shader_start": 30.0 + i*40} for i in range(num_pairs)]
+    pairs = [{"shader_name": f"Shader Pack {i + 1}", "vanilla_start": 10.0 + i*40, "shader_start": 30.0 + i*40} for i in range(3)]
+    return {"pairs": pairs, "voiceover_script": ""}
 
 def build_reference_style_video(source_paths: Sequence[Path], edit_plan: Dict[str, Any], music_path: Optional[Path], output: Path, work_dir: Path) -> Path:
     ensure_dir(work_dir)
@@ -847,37 +870,23 @@ def build_reference_style_video(source_paths: Sequence[Path], edit_plan: Dict[st
     raw_path = source_paths[0]
     raw_clip = VideoFileClip(str(raw_path))
 
-    # Ask Gemini to find exactly 3 shader pairs with names
-    pairs = get_gemini_pairs(raw_path, 3)
+    # Ask Gemini to dynamically find all shaders and write the script
+    gemini_data = get_gemini_pairs(raw_path)
+    pairs = gemini_data.get("pairs", [])
+    if not pairs:
+        log("  ⚠ Gemini found no pairs. Using fallback pairs.")
+        pairs = [{"shader_name": f"Shader Pack {i + 1}", "vanilla_start": 10.0 + i*40, "shader_start": 30.0 + i*40} for i in range(3)]
+    
+    VOICEOVER_SCRIPT = gemini_data.get("voiceover_script", "")
+    if not VOICEOVER_SCRIPT:
+        # Fallback script if Gemini failed to generate one
+        pair_lines = []
+        for i, p in enumerate(pairs):
+            name = p.get("shader_name", f"this shader pack")
+            pair_lines.append(f"Here is {name}. Check out how it transforms the world with incredible visuals.")
+        VOICEOVER_SCRIPT = " ".join(pair_lines)
 
-    # 3 pairs x (before + after) x 5.0s = 30s, matching the requested ~30s short.
     CLIP_DURATION = 5.0  # BEFORE + AFTER per pair
-
-    # ── Build voiceover script timed to the actual clip structure ────────────
-    # Layout: [BEFORE_1 5.0s][AFTER_1 5.0s][BEFORE_2 5.0s][AFTER_2 5.0s][BEFORE_3 5.0s][AFTER_3 5.0s]
-    # Total = 30 seconds
-    pair_lines = []
-    for i, p in enumerate(pairs):
-        name = p.get("shader_name", f"this shader pack")
-        if i == 0:
-            pair_lines.append(
-                f"First up, we have {name}. "
-                f"Watch how it transforms the world with incredible lighting and vibrant colors."
-            )
-        elif i == 1:
-            pair_lines.append(
-                f"Next, let's check out {name}. "
-                f"This one adds stunning water reflections and realistic shadows. It's a game-changer."
-            )
-        else:
-            pair_lines.append(
-                f"And for our final shader, this is {name}. "
-                f"The god rays and atmospheric fog are just breathtaking. You have to try this one."
-            )
-
-    # Each pair = 10s -> 3 pairs = 30s total.
-    # Voiceover lines are spread roughly across the matching pair's window.
-    VOICEOVER_SCRIPT = "  ".join(pair_lines)
     log(f"  Voiceover script: {VOICEOVER_SCRIPT[:80]}…")
 
     # ── Assemble alternating BEFORE/AFTER clips ───────────────────────────────
@@ -920,7 +929,7 @@ def build_reference_style_video(source_paths: Sequence[Path], edit_plan: Dict[st
     vo_clip = None
     if plan["voiceover_script"].strip():
         # generate_tts now has its own robust error handling and logging
-        vo_clip = generate_tts(plan["voiceover_script"], work_dir / "voice.mp3", "en-US-ChristopherNeural", "+12%", vtt_path)
+        vo_clip = generate_tts(plan["voiceover_script"], work_dir / "voice.mp3", "en-US-GuyNeural", "+12%", vtt_path)
     else:
         log("  No voiceover script. Skipping TTS generation.")
 
@@ -963,8 +972,8 @@ def build_reference_style_video(source_paths: Sequence[Path], edit_plan: Dict[st
         fps=TARGET_FPS,
         codec="libx264",
         audio_codec="aac",
-        preset="medium",
-        ffmpeg_params=["-crf", "18", "-pix_fmt", "yuv420p", "-movflags", "+faststart"],
+        preset="slow",
+        ffmpeg_params=["-crf", "14", "-pix_fmt", "yuv420p", "-movflags", "+faststart", "-b:a", "320k"],
         threads=4,
         logger="bar",
     )
@@ -1025,7 +1034,7 @@ async def _tts_save(text: str, out_path: Path, voice: str, rate: str, vtt_path: 
         await communicate.save(str(out_path))
 
 
-def generate_tts(text: str, out_path: Path, voice: str = "en-US-ChristopherNeural", rate: str = "+8%", vtt_path: Optional[Path] = None) -> Optional[AudioFileClip]:
+def generate_tts(text: str, out_path: Path, voice: str = "en-US-GuyNeural", rate: str = "+12%", vtt_path: Optional[Path] = None) -> Optional[AudioFileClip]:
     if not text:
         log("  TTS skipped: no text provided.")
         return None
@@ -1036,7 +1045,29 @@ def generate_tts(text: str, out_path: Path, voice: str = "en-US-ChristopherNeura
             log(f"  ❌ TTS generation failed: output file is missing or empty ({out_path})")
             return None
         log(f"  TTS audio generated successfully.")
-        return AudioFileClip(str(out_path))
+        audio = AudioFileClip(str(out_path))
+        
+        # Fallback for missing WordBoundary events (common with some neural voices)
+        if vtt_path and vtt_path.exists():
+            vtt_content = vtt_path.read_text(encoding="utf-8").strip()
+            if not vtt_content or vtt_content == "WEBVTT":
+                log("  ⚠ No WordBoundary events found. Generating proportional fallback VTT...")
+                words = text.split()
+                duration = audio.duration
+                word_dur = duration / max(len(words), 1)
+                lines = ["WEBVTT\n\n"]
+                for i, word in enumerate(words):
+                    start = i * word_dur
+                    end = (i + 1) * word_dur
+                    def fmt_time(t):
+                        h = int(t / 3600)
+                        m = int((t % 3600) / 60)
+                        s = t % 60
+                        return f"{h:02d}:{m:02d}:{s:06.3f}"
+                    lines.append(f"{fmt_time(start)} --> {fmt_time(end)}\n{word}\n\n")
+                vtt_path.write_text("".join(lines), encoding="utf-8")
+                
+        return audio
     except Exception as e:
         log(f"  ❌ TTS generation failed with an exception: {e}")
         import traceback
@@ -1100,7 +1131,7 @@ def build_audio(plan: Dict[str, Any], work_dir: Path, music_path: Optional[Path]
         text = str(plan["voiceover_script"]).strip()
         if text:
             try:
-                clip = generate_tts(text, work_dir / "voice.mp3", "en-US-ChristopherNeural", "+12%", vtt_path)
+                clip = generate_tts(text, work_dir / "voice.mp3", "en-US-GuyNeural", "+12%", vtt_path)
                 if clip:
                     # Let the voiceover start immediately
                     start = 0.0
@@ -1121,7 +1152,7 @@ def build_audio(plan: Dict[str, Any], work_dir: Path, music_path: Optional[Path]
                 continue
             start = safe_float(vo.get("start", 0), 0)
             try:
-                clip = generate_tts(text, work_dir / f"voice_{i}.mp3", vo.get("voice", "en-US-ChristopherNeural"), vo.get("rate", "+8%"))
+                clip = generate_tts(text, work_dir / f"voice_{i}.mp3", vo.get("voice", "en-US-GuyNeural"), vo.get("rate", "+12%"))
                 if clip:
                     tracks.append(clip.with_start(start))
                     vo_intervals.append((start, start + clip.duration))
@@ -1176,7 +1207,7 @@ def upload_to_youtube(video_path: Path, title: str, description: str, privacy: s
     from googleapiclient.http import MediaFileUpload
     from google.auth.exceptions import RefreshError
 
-    load_dotenv()
+    load_dotenv(override=True)
     client_id = os.getenv("YOUTUBE_CLIENT_ID")
     client_secret = os.getenv("YOUTUBE_CLIENT_SECRET")
     refresh_token = os.getenv("YOUTUBE_REFRESH_TOKEN")
