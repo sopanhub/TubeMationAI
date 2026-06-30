@@ -722,26 +722,50 @@ def _generate_tts_voiceover(script: str, work_dir: Path) -> Optional[Path]:
     return None
 
 
-def _words_from_tts_script(script: str, audio_path: Path) -> List[Dict]:
-    """Create proportional word timestamps from the TTS script + audio duration."""
+def create_hybrid_audio(original_video: Path, tts_audio: Path, start_sec: float, dur: float, out_path: Path) -> Path:
+    """
+    Creates a hybrid audio track: 
+    [0 : tts_duration] -> TTS Hook
+    [tts_duration : dur] -> Original video audio
+    """
+    # 1. Get TTS duration
+    res = subprocess.run(
+        ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", str(tts_audio)],
+        capture_output=True, text=True
+    )
     try:
-        from moviepy import AudioFileClip
-        dur = AudioFileClip(str(audio_path)).duration
-    except Exception:
-        dur = len(script.split()) * 0.35  # rough estimate: ~0.35s/word
+        tts_dur = float(res.stdout.strip())
+    except ValueError:
+        tts_dur = 5.0  # fallback
 
-    words_list = script.split()
-    if not words_list:
-        return []
-    word_dur = dur / len(words_list)
-    return [
-        {
-            "word": w,
-            "start": i * word_dur,
-            "end": (i + 1) * word_dur,
-        }
-        for i, w in enumerate(words_list)
-    ]
+    log(f"  AI hook duration: {tts_dur:.1f}s. Splicing with original audio...")
+
+    if tts_dur >= dur:
+        # TTS is longer than the whole clip, just return TTS
+        import shutil
+        shutil.copy(tts_audio, out_path)
+        return out_path
+        
+    # Extract original clip audio
+    clip_audio = out_path.parent / "clip_audio_temp.wav"
+    subprocess.run([
+        "ffmpeg", "-y", "-ss", str(start_sec), "-t", str(dur),
+        "-i", str(original_video),
+        "-q:a", "0", "-map", "a", str(clip_audio)
+    ], capture_output=True)
+
+    # Combine TTS and original audio starting at tts_dur
+    filter_complex = f"[1:a]atrim=start={tts_dur},asetpts=PTS-STARTPTS[part2]; [0:a][part2]concat=n=2:v=0:a=1[out]"
+    subprocess.run([
+        "ffmpeg", "-y",
+        "-i", str(tts_audio),
+        "-i", str(clip_audio),
+        "-filter_complex", filter_complex,
+        "-map", "[out]",
+        str(out_path)
+    ], capture_output=True)
+
+    return out_path
 
 
 # ─── Main pipeline ─────────────────────────────────────────────────────────────
@@ -818,10 +842,7 @@ def main():
         end_sec    = clip_data["end_sec"]
         dur        = clip_data["duration_seconds"]
         title      = clip_data.get("viral_title", f"Clip {cn}")
-        vo_script  = clip_data.get("voiceover_script", "")
-        hook       = clip_data.get("hook", "")
-        body       = clip_data.get("body", "")
-        end_line   = clip_data.get("end", "")
+        hook_script = clip_data.get("hook_script", "")
 
         log(f"\n--- Clip {cn}/5: {title} ({dur:.0f}s) ---")
         clip_dir = WORK_DIR / f"clip_{cn}"
@@ -839,20 +860,30 @@ def main():
         dual_silent = clip_dir / "dual_silent.mp4"
         compose_dual_screen(top_tracked, gameplay_cropped, dual_silent, dur)
 
-        # TTS voiceover from Gemini script
-        raw_audio = clip_dir / "raw_audio.wav"
-        if vo_script:
-            log(f"  Voiceover: \"{vo_script[:80]}...\"")
-            tts_audio = _generate_tts_voiceover(vo_script, clip_dir)
+        # Create Hybrid Audio (AI Hook + Original Audio)
+        combined_audio = clip_dir / "combined_audio.wav"
+        
+        if hook_script:
+            log(f"  Hook: \"{hook_script[:80]}...\"")
+            script_file = clip_dir / "vo_script.txt"
+            script_file.write_text(hook_script, encoding="utf-8")
+            
+            # Generate TTS for just the hook
+            tts_audio = _generate_tts_voiceover(hook_script, clip_dir)
             if tts_audio and tts_audio.exists():
-                raw_audio = tts_audio
-                words = _words_from_tts_script(vo_script, tts_audio)
+                # Merge TTS and original audio
+                create_hybrid_audio(main_raw, tts_audio, start_sec, dur, combined_audio)
             else:
-                log("  TTS failed. Falling back to Whisper transcription.")
-                words = transcribe_video(main_raw, raw_audio)
+                log("  TTS failed. Falling back to extracting original audio only.")
+                subprocess.run(["ffmpeg", "-y", "-ss", str(start_sec), "-t", str(dur), "-i", str(main_raw), "-q:a", "0", "-map", "a", str(combined_audio)], capture_output=True)
         else:
-            log("  No voiceover script. Running Whisper transcription.")
-            words = transcribe_video(main_raw, raw_audio)
+            log("  No hook script. Using original audio only.")
+            subprocess.run(["ffmpeg", "-y", "-ss", str(start_sec), "-t", str(dur), "-i", str(main_raw), "-q:a", "0", "-map", "a", str(combined_audio)], capture_output=True)
+
+        # Run Whisper on the final combined audio for perfect timing
+        log("  Running Whisper on combined audio...")
+        raw_audio = clip_dir / "raw_audio.wav"
+        words = transcribe_video(combined_audio, raw_audio)
 
         # Captions
         if words:

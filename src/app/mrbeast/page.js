@@ -226,28 +226,49 @@ export default function MrBeastDashboard() {
             </div>
           )}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
-            {generatedClips.filter(Boolean).map((clip) => (
-              <div key={clip.num}>
-                <p style={{ color: '#60a5fa', fontWeight: 'bold', marginBottom: '0.5rem' }}>
-                  Clip #{clip.num} — ready!
-                </p>
-                <div style={{ width: '100%', maxWidth: '280px', margin: '0 auto', aspectRatio: '9/16', backgroundColor: 'black', borderRadius: '8px', overflow: 'hidden' }}>
-                  <video
-                    controls
-                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+            {(loading || videoGenerated) && [1, 2, 3, 4, 5].map((num) => {
+              const clip = generatedClips[num - 1];
+              if (!clip) {
+                // Skeleton loading state for this clip
+                return (
+                  <div key={num} style={{ opacity: loading ? 0.5 : 0 }}>
+                    <p style={{ color: '#64748b', fontWeight: 'bold', marginBottom: '0.5rem' }}>
+                      Clip #{num} — processing...
+                    </p>
+                    <div style={{ width: '100%', maxWidth: '280px', margin: '0 auto', aspectRatio: '9/16', backgroundColor: '#1e293b', borderRadius: '8px', border: '2px dashed #334155', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <span style={{ color: '#64748b' }}>⏳</span>
+                    </div>
+                  </div>
+                );
+              }
+              // Finished clip
+              return (
+                <div key={clip.num}>
+                  <p style={{ color: '#60a5fa', fontWeight: 'bold', marginBottom: '0.5rem' }}>
+                    Clip #{clip.num} — ready!
+                  </p>
+                  <div style={{ width: '100%', maxWidth: '280px', margin: '0 auto', aspectRatio: '9/16', backgroundColor: 'black', borderRadius: '8px', overflow: 'hidden' }}>
+                    <video
+                      controls
+                      autoPlay
+                      muted
+                      loop
+                      playsInline
+                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                    >
+                      <source src={`/output/${clip.file}?t=${clip.ts}`} type="video/mp4" />
+                    </video>
+                  </div>
+                  <a
+                    href={`/output/${clip.file}`}
+                    download={clip.file}
+                    style={{ display: 'block', textAlign: 'center', marginTop: '0.5rem', color: '#34d399', fontWeight: 'bold', textDecoration: 'none' }}
                   >
-                    <source src={`/output/${clip.file}?t=${clip.ts}`} type="video/mp4" />
-                  </video>
+                    ⬇️ Download Clip #{clip.num}
+                  </a>
                 </div>
-                <a
-                  href={`/output/${clip.file}`}
-                  download={clip.file}
-                  style={{ display: 'block', textAlign: 'center', marginTop: '0.5rem', color: '#34d399', fontWeight: 'bold', textDecoration: 'none' }}
-                >
-                  Download Clip #{clip.num}
-                </a>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       </div>

@@ -26,12 +26,13 @@ You are an expert viral YouTube Shorts editor specialized in retention engineeri
 
 Analyze this video and extract the top 5 moments BEST SUITED for highly viral YouTube Shorts.
 
-CRITICAL CONSTRAINT: Every clip duration must be strictly between 20 seconds and 40 seconds maximum. Do not go under 20 seconds or over 40 seconds.
+CRITICAL CONSTRAINTS:
+1. Every clip duration must be strictly between 20 seconds and 40 seconds maximum. Do not go under 20 seconds or over 40 seconds.
+2. STRICT CLIP SEPARATION: You MUST select 5 completely distinct segments from the video. The timestamps for each clip must be at least 60 seconds apart from each other. Do NOT pull multiple clips from the exact same scene or timestamp. Space them out across the entire video.
 
-For each clip, provide exact Start/End timestamps and break the voiceover_script into 3 parts:
-- HOOK (0-4 seconds): High-energy opener to instantly grab attention and stop the scroll.
-- BODY (4 to end-5 seconds): The core challenge, climax, or high-intensity action narrative.
-- END (last 3-5 seconds): A rapid closing loop or clean call-to-action.
+For each clip, provide exact Start/End timestamps and write a SINGLE short AI hook.
+- hook_script (0-5 seconds, max 15 words): A high-energy opener to instantly grab attention and stop the scroll (e.g. "Mr Beast is INSANE for this!", "Nobody saw this coming", or "OMG this is so insane").
+- NEVER write "like and follow for part 2" or any closing remarks. The hook must instantly and naturally hand off to the original video's authentic audio which will play immediately after the hook.
 
 You must return STRICTLY a raw JSON array with EXACTLY 5 objects. NO markdown, NO ```json fences, NO commentary — just the raw array:
 
@@ -42,23 +43,17 @@ You must return STRICTLY a raw JSON array with EXACTLY 5 objects. NO markdown, N
     "end_time": "MM:SS",
     "duration_seconds": 30,
     "viral_title": "He survived 24 hours underground for THIS?!",
-    "hook_type": "Extreme Challenge Reveal",
-    "hook": "Nobody thought he would actually do it. But here we are.",
-    "body": "For twenty four hours straight, with zero food, zero light, and temperatures dropping below freezing, he pushed through every single limit. The moment his team tried to pull him out early, he refused. This is what REAL determination looks like.",
-    "end": "Drop a fire emoji if you thought he was gonna quit. Part two drops tomorrow.",
-    "voiceover_script": "Nobody thought he would actually do it. But here we are. For twenty four hours straight, with zero food, zero light, and temperatures dropping below freezing, he pushed through every single limit. The moment his team tried to pull him out early, he refused. This is what REAL determination looks like. Drop a fire emoji if you thought he was gonna quit. Part two drops tomorrow."
+    "hook_script": "Nobody thought he would actually do this. But here we are."
   }
 ]
 
 ABSOLUTE RULES:
-1. Return EXACTLY 5 clips in the array. Not more, not fewer.
-2. duration_seconds for EVERY clip MUST be between 20 and 40. Non-negotiable.
+1. Return EXACTLY 5 clips in the array.
+2. duration_seconds for EVERY clip MUST be between 20 and 40.
 3. start_time and end_time MUST be accurate real timestamps from the actual video content.
-4. Write ALL numbers as spoken words in voiceover_script (e.g. 'twenty four' not '24', 'five hundred thousand' not '$500,000') because this is fed directly to text-to-speech.
-5. The voiceover_script should be 50-90 words — energetic, dramatic, fast-paced storytelling.
-6. Identify moments with loud audio peaks, dramatic reactions, surprise reveals, challenge completions, or emotional climaxes.
-7. Space the clips throughout the video — do NOT cluster them all at the beginning.
-8. Output ONLY the raw JSON array. Absolutely nothing else.
+4. Write ALL numbers as spoken words in hook_script (e.g. 'twenty four' not '24') because this is fed to text-to-speech.
+5. Identify moments with loud audio peaks, dramatic reactions, surprise reveals, challenge completions, or emotional climaxes.
+6. Output ONLY the raw JSON array. Absolutely nothing else.
 """
 
 
@@ -99,14 +94,9 @@ def _normalise_clip(raw: dict, idx: int) -> dict:
     raw["end_sec"]   = end_sec
     raw["clip_number"] = raw.get("clip_number", idx + 1)
 
-    # Build combined voiceover_script from parts if not already present
-    if not raw.get("voiceover_script"):
-        parts = " ".join(filter(None, [
-            raw.get("hook", ""),
-            raw.get("body", ""),
-            raw.get("end", ""),
-        ]))
-        raw["voiceover_script"] = parts.strip()
+    # Ensure hook_script exists
+    if not raw.get("hook_script"):
+        raw["hook_script"] = "Wait, you are not ready for this."
 
     return _clamp_clip(raw)
 
@@ -197,70 +187,14 @@ def analyze_with_gemini(video_path: Path) -> Optional[List[dict]]:
     return None
 
 
-# ─── Fallback ─────────────────────────────────────────────────────────────────
-
-def fallback_scenes(video_path: Path) -> List[dict]:
-    """PySceneDetect fallback — returns up to 5 scene clips."""
-    log("  Running PySceneDetect fallback...")
-    clips = []
-    try:
-        from scenedetect import detect, ContentDetector
-        scene_list = detect(str(video_path), ContentDetector(threshold=27))
-        for i, scene in enumerate(scene_list):
-            if len(clips) >= 5:
-                break
-            s = scene[0].get_seconds()
-            e = scene[1].get_seconds()
-            if s < 30 or (e - s) < 20:
-                continue
-            dur = min(e - s, 35)
-            clips.append({
-                "clip_number": len(clips) + 1,
-                "start_sec": s,
-                "end_sec": s + dur,
-                "duration_seconds": dur,
-                "start_time": f"{int(s)//60}:{int(s)%60:02d}",
-                "end_time": f"{int(s+dur)//60}:{int(s+dur)%60:02d}",
-                "viral_title": f"You won't believe what happens at #{len(clips)+1}!",
-                "hook_type": "Dramatic Reveal",
-                "hook": "Wait — you are NOT ready for this.",
-                "body": "Nobody expected this moment to hit so hard. The energy, the chaos, the raw emotion on his face — this is the kind of content that breaks the internet every single time.",
-                "end": "Drop a comment if this actually surprised you. Part two coming soon.",
-                "voiceover_script": "Wait — you are NOT ready for this. Nobody expected this moment to hit so hard. The energy, the chaos, the raw emotion on his face — this is the kind of content that breaks the internet every single time. Drop a comment if this actually surprised you. Part two coming soon.",
-            })
-    except ImportError:
-        pass
-
-    # Fill remaining with hard-coded offsets
-    while len(clips) < 5:
-        i = len(clips)
-        s = 30.0 + i * 45
-        clips.append({
-            "clip_number": i + 1,
-            "start_sec": s,
-            "end_sec": s + 30,
-            "duration_seconds": 30,
-            "start_time": f"{int(s)//60}:{int(s)%60:02d}",
-            "end_time": f"{int(s+30)//60}:{int(s+30)%60:02d}",
-            "viral_title": f"Clip #{i+1} — This is INSANE!",
-            "hook_type": "Action Peak",
-            "hook": "Nobody saw this coming.",
-            "body": "This is one of the most unbelievable moments ever put on camera. If you blinked, you missed it. The crowd, the chaos, the reaction — absolutely legendary.",
-            "end": "Like and follow for part two!",
-            "voiceover_script": "Nobody saw this coming. This is one of the most unbelievable moments ever put on camera. If you blinked, you missed it. The crowd, the chaos, the reaction — absolutely legendary. Like and follow for part two!",
-        })
-
-    return clips
-
-
 # ─── Public entry point ───────────────────────────────────────────────────────
 
 def get_all_clips(video_path: Path) -> List[dict]:
-    """Main entry — returns top 5 clips via Gemini or PySceneDetect fallback."""
+    """Main entry — returns top 5 clips via Gemini."""
     clips = analyze_with_gemini(video_path)
-    if clips:
-        return clips
-    return fallback_scenes(video_path)
+    if not clips:
+        raise RuntimeError("Gemini analysis failed. PySceneDetect fallback has been disabled by user request.")
+    return clips
 
 
 # Keep a single-clip alias for backwards compatibility
