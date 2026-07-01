@@ -5,6 +5,12 @@ import Link from 'next/link';
 import HistoryModal from '../components/HistoryModal';
 import AutomationPanel from '../components/AutomationPanel';
 
+const getApiUrl = (path) => {
+  const backend = process.env.NEXT_PUBLIC_BACKEND_URL || '';
+  const cleanBackend = backend.replace(/\/$/, '');
+  return `${cleanBackend}${path}`;
+};
+
 export default function Dashboard() {
   const [url, setUrl] = useState('');
   const [status, setStatus] = useState('Idle');
@@ -72,7 +78,7 @@ BSL, Newb, SEUS, SLS, Complementary realistic minecraft shaders, mcpe shaders, r
     addLog(`Starting automation for: ${url.trim()}`);
 
     try {
-      const response = await fetch('/api/generate-video', {
+      const response = await fetch(getApiUrl('/api/generate-video'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ urls: [url.trim()] }),
@@ -163,7 +169,7 @@ BSL, Newb, SEUS, SLS, Complementary realistic minecraft shaders, mcpe shaders, r
     addLog('Initiating YouTube upload...');
 
     try {
-      const response = await fetch('/api/upload-video', {
+      const response = await fetch(getApiUrl('/api/upload-video'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title: uploadTitle.trim(), description: uploadDescription.trim(), channel: 'minecraft' }),
@@ -283,7 +289,7 @@ BSL, Newb, SEUS, SLS, Complementary realistic minecraft shaders, mcpe shaders, r
                 <video
                   id="preview-video"
                   ref={videoRef}
-                  src={`/output/upload.mp4?v=${videoKey}`}
+                  src={getApiUrl(`/output/upload.mp4?v=${videoKey}`)}
                   controls
                   style={s.video}
                 />

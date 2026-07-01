@@ -5,6 +5,12 @@ import Link from 'next/link';
 import HistoryModal from '../components/HistoryModal';
 import AutomationPanel from '../components/AutomationPanel';
 
+const getApiUrl = (path) => {
+  const backend = process.env.NEXT_PUBLIC_BACKEND_URL || '';
+  const cleanBackend = backend.replace(/\/$/, '');
+  return `${cleanBackend}${path}`;
+};
+
 const COPYRIGHT_DISCLAIMER = `----------------------------------------------------------------
 ⚠️ COPYRIGHT DISCLAIMER:
 This video features materials protected by the Fair Use guidelines of Section 107 of the Copyright Act. All rights and credits go directly to the respective owners. No copyright infringement intended. 
@@ -76,7 +82,7 @@ export default function MrBeastDashboard() {
     setStatus('Uploading to YouTube...');
 
     try {
-      const response = await fetch('/api/upload-video', {
+      const response = await fetch(getApiUrl('/api/upload-video'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
@@ -119,7 +125,7 @@ export default function MrBeastDashboard() {
     addLog(`Target: ${url.trim()}`);
 
     try {
-      const response = await fetch('/api/generate-mrbeast', {
+      const response = await fetch(getApiUrl('/api/generate-mrbeast'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url: url.trim(), gameplayUrl: gameplayUrl.trim(), quality }),
@@ -325,11 +331,11 @@ export default function MrBeastDashboard() {
                       playsInline
                       style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                     >
-                      <source src={`/output/${clip.file}?t=${clip.ts}`} type="video/mp4" />
+                      <source src={getApiUrl(`/output/${clip.file}?t=${clip.ts}`)} type="video/mp4" />
                     </video>
                   </div>
                   <a
-                    href={`/output/${clip.file}`}
+                    href={getApiUrl(`/output/${clip.file}`)}
                     download={clip.file}
                     style={{ display: 'block', textAlign: 'center', margin: '1rem 0', color: '#34d399', fontWeight: 'bold', textDecoration: 'none' }}
                   >

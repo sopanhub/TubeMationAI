@@ -2,6 +2,12 @@
 
 import { useState, useEffect, useCallback } from 'react';
 
+const getApiUrl = (path) => {
+  const backend = process.env.NEXT_PUBLIC_BACKEND_URL || '';
+  const cleanBackend = backend.replace(/\/$/, '');
+  return `${cleanBackend}${path}`;
+};
+
 const MRBEAST_DESC = `----------------------------------------------------------------
 ⚠️ COPYRIGHT DISCLAIMER:
 This video features materials protected by the Fair Use guidelines of Section 107 of the Copyright Act. All rights and credits go directly to the respective owners. No copyright infringement intended.
@@ -48,7 +54,7 @@ export default function HistoryModal({ channel, onClose }) {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/history?channel=${channel}`);
+      const res = await fetch(getApiUrl(`/api/history?channel=${channel}`));
       const data = await res.json();
       if (data.error) throw new Error(data.error);
       setFiles(data.files || []);
@@ -67,7 +73,7 @@ export default function HistoryModal({ channel, onClose }) {
     if (!confirm(`Delete "${filename}"? This cannot be undone.`)) return;
     setDeleting(filename);
     try {
-      const res = await fetch('/api/history', {
+      const res = await fetch(getApiUrl('/api/history'), {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ filename }),
@@ -88,7 +94,7 @@ export default function HistoryModal({ channel, onClose }) {
     
     setUploading(file.name);
     try {
-      const res = await fetch('/api/upload-video', {
+      const res = await fetch(getApiUrl('/api/upload-video'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -247,7 +253,7 @@ export default function HistoryModal({ channel, onClose }) {
                 {/* Thumbnail */}
                 <div style={thumbBox}>
                   <video
-                    src={file.url}
+                    src={getApiUrl(file.url)}
                     style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                     muted
                     playsInline
@@ -281,7 +287,7 @@ export default function HistoryModal({ channel, onClose }) {
                   >
                     {isUp ? '⏳ Uploading…' : '⬆️ Upload to YT'}
                   </button>
-                  <a href={file.url} download={file.name} style={dlBtn}>
+                  <a href={getApiUrl(file.url)} download={file.name} style={dlBtn}>
                     ⬇️ Download
                   </a>
                   <button

@@ -2,6 +2,12 @@
 
 import { useState, useEffect, useCallback } from 'react';
 
+const getApiUrl = (path) => {
+  const backend = process.env.NEXT_PUBLIC_BACKEND_URL || '';
+  const cleanBackend = backend.replace(/\/$/, '');
+  return `${cleanBackend}${path}`;
+};
+
 export default function AutomationPanel({ channel }) {
   const [urls, setUrls] = useState([]);
   const [usedUrls, setUsedUrls] = useState([]);
@@ -26,9 +32,9 @@ export default function AutomationPanel({ channel }) {
   const fetchState = useCallback(async () => {
     try {
       const [urlRes, schedRes, procRes] = await Promise.all([
-        fetch(`/api/url-library?channel=${channel}`),
-        fetch('/api/scheduler'),
-        fetch('/api/scheduler-process'),
+        fetch(getApiUrl(`/api/url-library?channel=${channel}`)),
+        fetch(getApiUrl('/api/scheduler')),
+        fetch(getApiUrl('/api/scheduler-process')),
       ]);
       const urlData  = await urlRes.json();
       const schedData = await schedRes.json();
@@ -58,7 +64,7 @@ export default function AutomationPanel({ channel }) {
     const trimmed = newUrl.trim();
     if (!trimmed) return;
     try {
-      const res = await fetch('/api/url-library', {
+      const res = await fetch(getApiUrl('/api/url-library'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ channel, url: trimmed }),
@@ -75,7 +81,7 @@ export default function AutomationPanel({ channel }) {
 
   const removeUrl = async (url) => {
     try {
-      const res = await fetch('/api/url-library', {
+      const res = await fetch(getApiUrl('/api/url-library'), {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ channel, url }),
@@ -93,14 +99,14 @@ export default function AutomationPanel({ channel }) {
     setLoading(true);
     try {
       // Start the channel schedule
-      await fetch('/api/scheduler', {
+      await fetch(getApiUrl('/api/scheduler'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'start', channel, interval_hours: intervalHours }),
       });
       // Start the background process if not running
       if (!processRunning) {
-        await fetch('/api/scheduler-process', {
+        await fetch(getApiUrl('/api/scheduler-process'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ action: 'start' }),
@@ -118,7 +124,7 @@ export default function AutomationPanel({ channel }) {
   const stopScheduler = async () => {
     setLoading(true);
     try {
-      await fetch('/api/scheduler', {
+      await fetch(getApiUrl('/api/scheduler'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'stop', channel }),
@@ -136,13 +142,13 @@ export default function AutomationPanel({ channel }) {
     if (!confirm(`Run the ${label} automation right now?`)) return;
     setLoading(true);
     try {
-      await fetch('/api/scheduler', {
+      await fetch(getApiUrl('/api/scheduler'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'trigger_now', channel }),
       });
       if (!processRunning) {
-        await fetch('/api/scheduler-process', {
+        await fetch(getApiUrl('/api/scheduler-process'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ action: 'start' }),
