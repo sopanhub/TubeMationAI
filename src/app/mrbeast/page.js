@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
 import HistoryModal from '../components/HistoryModal';
-import AutomationPanel from '../components/AutomationPanel';
+
 
 const getApiUrl = (path) => {
   const backend = process.env.NEXT_PUBLIC_BACKEND_URL || '';
@@ -216,8 +216,7 @@ export default function MrBeastDashboard() {
       </nav>
       {showHistory && <HistoryModal channel="mrbeast" onClose={() => setShowHistory(false)} />}
 
-      {/* ── Auto Scheduler ── */}
-      <AutomationPanel channel="mrbeast" />
+
 
       <div style={s.header}>
         <h1 style={s.title}>MrBeast / Streamer Shorts Generator</h1>

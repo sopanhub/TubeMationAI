@@ -1,7 +1,6 @@
 import os
 import json
 import asyncio
-import psutil
 from typing import Optional, List
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -20,20 +19,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-STATE_PATH = os.path.join(os.getcwd(), 'scheduler_state.json')
 OUTPUT_DIR = os.path.join(os.getcwd(), 'public', 'output')
 
 # Ensure the output directory exists
 os.makedirs(OUTPUT_DIR, exist_ok=True)
-
-class UrlLibraryRequest(BaseModel):
-    channel: str
-    url: str
-
-class SchedulerStartRequest(BaseModel):
-    action: str
-    channel: Optional[str] = None
-    interval_hours: Optional[int] = 5
 
 class UploadVideoRequest(BaseModel):
     title: str
@@ -48,175 +37,6 @@ class GenerateMrBeastRequest(BaseModel):
     url: str
     gameplayUrl: Optional[str] = None
     quality: Optional[str] = 'high'
-
-def read_state():
-    try:
-        with open(STATE_PATH, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    except Exception:
-        return {
-            "minecraft": {"urls": [], "used_urls": [], "is_running": False, "next_run": None, "last_run": None, "interval_hours": 5},
-            "mrbeast": {"urls": [], "used_urls": [], "clip_queue": [], "is_running": False, "next_run": None, "last_run": None, "interval_hours": 5},
-            "scheduler_pid": None
-        }
-
-def write_state(state):
-    with open(STATE_PATH, 'w', encoding='utf-8') as f:
-        json.dump(state, f, indent=2)
-
-def is_pid_alive(pid):
-    if not pid:
-        return False
-    try:
-        process = psutil.Process(pid)
-        return process.is_running()
-    except psutil.NoSuchProcess:
-        return False
-    except Exception:
-        return False
-
-# ── URL Library ──
-@app.get("/api/url-library")
-async def get_url_library(channel: str):
-    state = read_state()
-    ch = state.get(channel)
-    if not ch:
-        raise HTTPException(status_code=400, detail="Invalid channel")
-    return {"urls": ch.get("urls", []), "used_urls": ch.get("used_urls", [])}
-
-@app.post("/api/url-library")
-async def add_url(data: UrlLibraryRequest):
-    state = read_state()
-    if data.channel not in state:
-        raise HTTPException(status_code=400, detail="Invalid channel")
-    
-    ch = state[data.channel]
-    all_urls = ch.get("urls", []) + ch.get("used_urls", [])
-    if data.url in all_urls:
-        raise HTTPException(status_code=409, detail="URL already exists in library")
-    
-    ch["urls"] = ch.get("urls", []) + [data.url]
-    write_state(state)
-    return {"success": True, "urls": ch["urls"]}
-
-@app.delete("/api/url-library")
-async def remove_url(data: UrlLibraryRequest):
-    state = read_state()
-    if data.channel not in state:
-        raise HTTPException(status_code=400, detail="Invalid channel")
-    
-    ch = state[data.channel]
-    ch["urls"] = [u for u in ch.get("urls", []) if u != data.url]
-    ch["used_urls"] = [u for u in ch.get("used_urls", []) if u != data.url]
-    write_state(state)
-    return {"success": True}
-
-# ── Scheduler Controls ──
-@app.get("/api/scheduler")
-async def get_scheduler():
-    state = read_state()
-    return state
-
-@app.post("/api/scheduler")
-async def control_scheduler(data: SchedulerStartRequest):
-    state = read_state()
-    action = data.action
-    channel = data.channel
-    interval_hours = data.interval_hours or 5
-
-    if action == 'start' and channel:
-        if channel not in state:
-            raise HTTPException(status_code=400, detail="Invalid channel")
-        state[channel]["is_running"] = True
-        state[channel]["interval_hours"] = interval_hours
-        import datetime
-        next_run_dt = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=interval_hours)
-        state[channel]["next_run"] = next_run_dt.isoformat()
-        write_state(state)
-        return {"success": True, "message": f"Scheduler started for {channel}. Next run in {interval_hours}h."}
-
-    if action == 'stop' and channel:
-        if channel not in state:
-            raise HTTPException(status_code=400, detail="Invalid channel")
-        state[channel]["is_running"] = False
-        state[channel]["next_run"] = None
-        write_state(state)
-        return {"success": True, "message": f"Scheduler stopped for {channel}."}
-
-    if action == 'trigger_now' and channel:
-        if channel not in state:
-            raise HTTPException(status_code=400, detail="Invalid channel")
-        import datetime
-        state[channel]["next_run"] = (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=10)).isoformat()
-        if not state[channel]["is_running"]:
-            state[channel]["is_running"] = True
-        write_state(state)
-        return {"success": True, "message": f"Triggered immediate run for {channel}."}
-
-    if action == 'set_interval' and channel:
-        if channel not in state:
-            raise HTTPException(status_code=400, detail="Invalid channel")
-        state[channel]["interval_hours"] = interval_hours
-        write_state(state)
-        return {"success": True, "message": f"Interval set to {interval_hours}h for {channel}."}
-
-    if action == 'clear_queue' and channel == 'mrbeast':
-        state["mrbeast"]["clip_queue"] = []
-        write_state(state)
-        return {"success": True, "message": "MrBeast clip queue cleared."}
-
-    raise HTTPException(status_code=400, detail="Unknown action")
-
-# ── Scheduler Process ──
-@app.get("/api/scheduler-process")
-async def get_scheduler_process():
-    state = read_state()
-    pid = state.get("scheduler_pid")
-    alive = is_pid_alive(pid)
-    if not alive and pid:
-        state["scheduler_pid"] = None
-        write_state(state)
-    return {"running": alive, "pid": pid if alive else None}
-
-@app.post("/api/scheduler-process")
-async def control_scheduler_process(req: Request):
-    body = await req.json()
-    action = body.get("action")
-    state = read_state()
-
-    if action == 'start':
-        if is_pid_alive(state.get("scheduler_pid")):
-            return {"success": True, "message": "Scheduler already running.", "pid": state["scheduler_pid"]}
-        
-        script_path = os.path.join(os.getcwd(), 'scripts', 'auto_scheduler.py')
-        # Spawn python3 process in background
-        process = asyncio.create_subprocess_exec(
-            "python3", script_path,
-            stdout=asyncio.subprocess.DEVNULL,
-            stderr=asyncio.subprocess.DEVNULL,
-            start_new_session=True
-        )
-        proc = await process
-        state["scheduler_pid"] = proc.pid
-        write_state(state)
-        return {"success": True, "message": "Scheduler process started.", "pid": proc.pid}
-
-    if action == 'stop':
-        pid = state.get("scheduler_pid")
-        if not pid or not is_pid_alive(pid):
-            state["scheduler_pid"] = None
-            write_state(state)
-            return {"success": True, "message": "Scheduler was not running."}
-        try:
-            p = psutil.Process(pid)
-            p.terminate()
-            state["scheduler_pid"] = None
-            write_state(state)
-            return {"success": True, "message": "Scheduler stopped."}
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Failed to stop: {str(e)}")
-
-    raise HTTPException(status_code=400, detail="Unknown action")
 
 # ── History ──
 @app.get("/api/history")

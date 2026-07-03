@@ -31,7 +31,7 @@ CRITICAL CONSTRAINTS:
 2. STRICT CLIP SEPARATION: You MUST select 5 completely distinct segments from the video. The timestamps for each clip must be at least 60 seconds apart from each other. Do NOT pull multiple clips from the exact same scene or timestamp. Space them out across the entire video.
 
 For each clip, provide exact Start/End timestamps and write a SINGLE short AI hook.
-- hook_script (0-5 seconds, max 15 words): A high-energy opener to instantly grab attention and stop the scroll. **CRITICAL: The script MUST match EXACTLY what is visually happening on screen at that moment** (e.g. if someone falls, say "He literally just fell!", or if an explosion happens, say "I can't believe that exploded!"). Do not use generic phrases unless they fit the visuals perfectly.
+- hook_script (0-5 seconds, max 15 words): A high-energy opener to instantly grab attention. **CRITICAL VISUAL REQUIREMENT: The script MUST describe EXACTLY what is visually happening on screen at that exact second**. You must name the specific objects, actions, or people you see on screen (e.g., "Look at this massive explosion!", "He just dropped the Lamborghini!"). DO NOT use vague generic phrases like "You won't believe this" or "Nobody thought he would do this".
 - NEVER write "like and follow for part 2" or any closing remarks. The hook must instantly and naturally hand off to the original video's authentic audio which will play immediately after the hook.
 
 You must return STRICTLY a raw JSON array with EXACTLY 5 objects. NO markdown, NO ```json fences, NO commentary — just the raw array:
@@ -42,8 +42,8 @@ You must return STRICTLY a raw JSON array with EXACTLY 5 objects. NO markdown, N
     "start_time": "MM:SS",
     "end_time": "MM:SS",
     "duration_seconds": 30,
-    "viral_title": "He survived 24 hours underground for THIS?!",
-    "hook_script": "Nobody thought he would actually do this. But here we are."
+    "viral_title": "he is so so insaane?!",
+    "hook_script": "He literally just threw a car off the roof!"
   }
 ]
 
@@ -53,7 +53,8 @@ ABSOLUTE RULES:
 3. start_time and end_time MUST be accurate real timestamps from the actual video content.
 4. Write ALL numbers as spoken words in hook_script (e.g. 'twenty four' not '24') because this is fed to text-to-speech.
 5. Identify moments with loud audio peaks, dramatic reactions, surprise reveals, challenge completions, or emotional climaxes.
-6. Output ONLY the raw JSON array. Absolutely nothing else.
+6. The hook_script MUST narrate the literal visual action happening on screen.
+7. Output ONLY the raw JSON array. Absolutely nothing else.
 """
 
 
@@ -268,9 +269,9 @@ def analyze_with_gemini(video_path: Path, youtube_url: Optional[str] = None) -> 
 
         except Exception as e:
             from google.genai.errors import APIError
-            if isinstance(e, APIError) and getattr(e, "code", 200) in [429, 500, 503]:
+            if (isinstance(e, APIError) and getattr(e, "code", 200) in [429, 500, 503]) or isinstance(e, ValueError):
                 wait = BASE_WAIT * attempt
-                log(f"  Gemini rate limited/server error (attempt {attempt}/{MAX_RETRIES}). Retrying in {wait}s...")
+                log(f"  Gemini error/parse failure (attempt {attempt}/{MAX_RETRIES}): {e}. Retrying in {wait}s...")
                 time.sleep(wait)
             else:
                 log(f"  Gemini analysis failed: {e}")

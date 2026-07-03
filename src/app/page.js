@@ -1,11 +1,17 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
+import SettingsModal from './components/SettingsModal';
 
 export default function Home() {
+  const [showSettings, setShowSettings] = useState(false);
+
   const s = {
-    page: { minHeight: '100vh', backgroundColor: '#0f172a', color: '#f8fafc', padding: '4rem 2rem', fontFamily: 'system-ui, sans-serif' },
-    container: { maxWidth: '1000px', margin: '0 auto', textAlign: 'center' },
+    page: { minHeight: '100vh', backgroundColor: '#0f172a', color: '#f8fafc', padding: '4rem 2rem', fontFamily: 'system-ui, sans-serif', position: 'relative' },
+    headerControls: { position: 'absolute', top: '1.5rem', right: '2rem' },
+    settingsBtn: { background: '#1e293b', border: '1px solid #334155', color: '#cbd5e1', borderRadius: '8px', padding: '0.6rem 1.2rem', cursor: 'pointer', fontSize: '0.95rem', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '0.5rem', transition: 'all 0.2s', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' },
+    container: { maxWidth: '1000px', margin: '0 auto', textAlign: 'center', paddingTop: '2rem' },
     title: { fontSize: '3rem', fontWeight: '800', marginBottom: '1rem', background: 'linear-gradient(to right, #60a5fa, #a78bfa)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' },
     subtitle: { fontSize: '1.25rem', color: '#94a3b8', marginBottom: '4rem' },
     grid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '2rem' },
@@ -17,6 +23,12 @@ export default function Home() {
 
   return (
     <div style={s.page}>
+      <div style={s.headerControls}>
+        <button onClick={() => setShowSettings(true)} style={s.settingsBtn} className="hover-btn">
+          ⚙️ Settings
+        </button>
+      </div>
+
       <div style={s.container}>
         <h1 style={s.title}>Video Automation Studio</h1>
         <p style={s.subtitle}>Select a generation pipeline to create viral Shorts automatically.</p>
@@ -35,8 +47,12 @@ export default function Home() {
           </Link>
         </div>
       </div>
+
+      {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
+
       <style dangerouslySetInnerHTML={{__html: `
         .hover-card:hover { transform: translateY(-4px); box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5); border-color: #475569; }
+        .hover-btn:hover { background-color: #334155 !important; border-color: #475569 !important; color: #f8fafc !important; transform: translateY(-2px); box-shadow: 0 6px 12px -2px rgba(0, 0, 0, 0.2); }
       `}} />
     </div>
   );

@@ -3,7 +3,6 @@
 import { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
 import HistoryModal from '../components/HistoryModal';
-import AutomationPanel from '../components/AutomationPanel';
 
 const getApiUrl = (path) => {
   const backend = process.env.NEXT_PUBLIC_BACKEND_URL || '';
@@ -216,8 +215,7 @@ BSL, Newb, SEUS, SLS, Complementary realistic minecraft shaders, mcpe shaders, r
       </div>
       {showHistory && <HistoryModal channel="minecraft" onClose={() => setShowHistory(false)} />}
 
-      {/* ── Auto Scheduler ── */}
-      <AutomationPanel channel="minecraft" />
+
 
       {/* ── Header ── */}
       <div style={s.header}>

@@ -241,7 +241,7 @@ def download_source(url: str, out_path: Path) -> Path:
         return out_path
     log(f"Downloading source: {url}")
     ydl_opts = {
-        "format": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
+        "format": "bestvideo[height<=1080][fps<=60]+bestaudio/best[height<=1080][fps<=60]/best",
         "outtmpl": str(out_path),
         "merge_output_format": "mp4",
         "extractor_args": {"youtube": {"player_client": ["android", "web"]}},
@@ -818,6 +818,7 @@ def get_gemini_pairs(video_path: Path, youtube_url: Optional[str] = None) -> dic
             SCRIPTING RULES:
             - "script" MUST EXACTLY match the actual visuals of its specific timestamp (e.g., mention the exact blocks, sky, or water seen on screen).
             - The 3 scripts must flow together to form ONE cohesive, continuous narrative for the whole video. Pair 1 should be the hook, Pair 2 the body, and Pair 3 the conclusion. They should sound natural when read back-to-back.
+            - CRITICAL: In the script for the FINAL Pair (Pair 3), you MUST explicitly say "Check the description for the download link!" or a similar energetic call to action at the very end.
             
             DESCRIPTION TASK:
             Write an engaging YouTube description using the following template, but replace [SHADER_NAMES] with the actual names you found:
@@ -1066,7 +1067,7 @@ async def _tts_save(text: str, out_path: Path, voice: str, rate: str, vtt_path: 
         await communicate.save(str(out_path))
 
 
-def generate_tts(text: str, out_path: Path, voice: str = "en-US-GuyNeural", rate: str = "+12%", vtt_path: Optional[Path] = None) -> Optional[AudioFileClip]:
+def generate_tts(text: str, out_path: Path, voice: str = "en-US-ChristopherNeural", rate: str = "+12%", vtt_path: Optional[Path] = None) -> Optional[AudioFileClip]:
     if not text:
         log("  TTS skipped: no text provided.")
         return None

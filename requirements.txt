@@ -7,3 +7,13 @@ python-dotenv
 google-genai
 google-api-python-client
 google-auth
+opencv-python
+mediapipe
+whisper-timestamped
+openai-whisper
+gTTS
+json5
+psutil
+fastapi
+uvicorn
+pydantic

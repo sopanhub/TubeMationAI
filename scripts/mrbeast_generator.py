@@ -89,7 +89,7 @@ def ytdlp_download(url: str, out_path: Path, extra_args: List[str] = None) -> bo
     elif TARGET_W == 720:
         max_h = 720
         
-    format_str = f"bestvideo[height<={max_h}][ext=mp4]+bestaudio[ext=m4a]/best[height<={max_h}][ext=mp4]/best"
+    format_str = f"bestvideo[height<={max_h}][fps<=60][ext=mp4]+bestaudio[ext=m4a]/best[height<={max_h}][fps<=60][ext=mp4]/best"
     
     args = [
         "yt-dlp",
