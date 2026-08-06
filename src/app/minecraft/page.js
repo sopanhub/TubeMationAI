@@ -48,6 +48,7 @@ BSL, Newb, SEUS, SLS, Complementary realistic minecraft shaders, mcpe shaders, r
 🏷️ Tags
 #MinecraftPE #MinecraftShaders #MCPE #BedrockEdition #patchshaders #mcpeshaders #BSLShaders #NewbShaders #SEUSShaders #SLSShaders #ComplementaryShaders`);
   const [videoKey, setVideoKey] = useState(Date.now());
+  const [uploadChannel, setUploadChannel] = useState('minecraft');
   const videoRef = useRef(null);
 
   // ── Logs ─────────────────────────────────────────────────────────────────
@@ -171,7 +172,7 @@ BSL, Newb, SEUS, SLS, Complementary realistic minecraft shaders, mcpe shaders, r
       const response = await fetch(getApiUrl('/api/upload-video'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: uploadTitle.trim(), description: uploadDescription.trim(), channel: 'minecraft' }),
+        body: JSON.stringify({ title: uploadTitle.trim(), description: uploadDescription.trim(), channel: uploadChannel }),
       });
       const data = await response.json();
 
@@ -313,6 +314,16 @@ BSL, Newb, SEUS, SLS, Complementary realistic minecraft shaders, mcpe shaders, r
                   style={s.textarea}
                   disabled={loading}
                 />
+                <label style={s.label}>Target Channel</label>
+                <select
+                  value={uploadChannel}
+                  onChange={(e) => setUploadChannel(e.target.value)}
+                  style={{ ...s.input, marginBottom: 14 }}
+                  disabled={loading}
+                >
+                  <option value="mrbeast">🎯 MrBeast Channel</option>
+                  <option value="minecraft">⛏️ Minecraft Channel</option>
+                </select>
               </div>
 
               <button

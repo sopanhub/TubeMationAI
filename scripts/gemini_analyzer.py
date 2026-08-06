@@ -21,40 +21,40 @@ def log(msg: str):
 
 # ─── Master Prompt ─────────────────────────────────────────────────────────────
 
-GEMINI_MASTER_PROMPT = """
+def get_gemini_master_prompt(num_clips: int = 5, avoid_timestamps: str = "") -> str:
+    avoid_clause = ""
+    if avoid_timestamps:
+        avoid_clause = f"\n3. AVOID TIMESTAMPS: You MUST NOT pick any clips that overlap with these already generated timestamps: {avoid_timestamps}\n"
+
+    return f"""
 You are an expert viral YouTube Shorts editor specialized in retention engineering for high-energy content like MrBeast and IShowSpeed videos.
 
-Analyze this video and extract the top 5 moments BEST SUITED for highly viral YouTube Shorts.
+Analyze this video and extract the top {num_clips} moments BEST SUITED for highly viral YouTube Shorts.
 
 CRITICAL CONSTRAINTS:
-1. Every clip duration must be strictly between 20 seconds and 40 seconds maximum. Do not go under 20 seconds or over 40 seconds.
-2. STRICT CLIP SEPARATION: You MUST select 5 completely distinct segments from the video. The timestamps for each clip must be at least 60 seconds apart from each other. Do NOT pull multiple clips from the exact same scene or timestamp. Space them out across the entire video.
+1. Every clip duration must be strictly between 15 seconds and 25 seconds maximum. Do not go under 15 seconds or over 25 seconds.
+2. STRICT CLIP SEPARATION: You MUST select {num_clips} completely distinct segments from the video. The timestamps for each clip must be at least 60 seconds apart from each other. Do NOT pull multiple clips from the exact same scene or timestamp. Space them out across the entire video.{avoid_clause}
 
-For each clip, provide exact Start/End timestamps and write a SINGLE short AI hook.
-- hook_script (0-5 seconds, max 15 words): A high-energy opener to instantly grab attention. **CRITICAL VISUAL REQUIREMENT: The script MUST describe EXACTLY what is visually happening on screen at that exact second**. You must name the specific objects, actions, or people you see on screen (e.g., "Look at this massive explosion!", "He just dropped the Lamborghini!"). DO NOT use vague generic phrases like "You won't believe this" or "Nobody thought he would do this".
-- NEVER write "like and follow for part 2" or any closing remarks. The hook must instantly and naturally hand off to the original video's authentic audio which will play immediately after the hook.
+For each clip, provide exact Start/End timestamps.
 
-You must return STRICTLY a raw JSON array with EXACTLY 5 objects. NO markdown, NO ```json fences, NO commentary — just the raw array:
+You must return STRICTLY a raw JSON array with EXACTLY {num_clips} objects. NO markdown, NO ```json fences, NO commentary — just the raw array:
 
 [
-  {
+  {{
     "clip_number": 1,
     "start_time": "MM:SS",
     "end_time": "MM:SS",
-    "duration_seconds": 30,
-    "viral_title": "he is so so insaane?!",
-    "hook_script": "He literally just threw a car off the roof!"
-  }
+    "duration_seconds": 20,
+    "viral_title": "he is so so insaane?!"
+  }}
 ]
 
 ABSOLUTE RULES:
-1. Return EXACTLY 5 clips in the array.
-2. duration_seconds for EVERY clip MUST be between 20 and 40.
+1. Return EXACTLY {num_clips} clips in the array.
+2. duration_seconds for EVERY clip MUST be between 15 and 25.
 3. start_time and end_time MUST be accurate real timestamps from the actual video content.
-4. Write ALL numbers as spoken words in hook_script (e.g. 'twenty four' not '24') because this is fed to text-to-speech.
-5. Identify moments with loud audio peaks, dramatic reactions, surprise reveals, challenge completions, or emotional climaxes.
-6. The hook_script MUST narrate the literal visual action happening on screen.
-7. Output ONLY the raw JSON array. Absolutely nothing else.
+4. Identify moments with loud audio peaks, dramatic reactions, surprise reveals, challenge completions, or emotional climaxes.
+5. Output ONLY the raw JSON array. Absolutely nothing else.
 """
 
 
@@ -72,16 +72,16 @@ def parse_mm_ss(ts: str) -> float:
 
 
 def _clamp_clip(clip: dict) -> dict:
-    """Enforce 20-40s duration on a single clip dict."""
+    """Enforce 15-25s duration on a single clip dict."""
     start = clip.get("start_sec", 30.0)
-    end   = clip.get("end_sec", 60.0)
+    end   = clip.get("end_sec", 50.0)
     dur   = end - start
-    if dur < 20:
-        end = start + 25  # extend to 25s minimum
-        log(f"  ⚠ Clip {clip.get('clip_number','')} was {dur:.0f}s — extended to 25s.")
-    elif dur > 40:
-        end = start + 38  # trim to 38s
-        log(f"  ⚠ Clip {clip.get('clip_number','')} was {dur:.0f}s — trimmed to 38s.")
+    if dur < 15:
+        end = start + 18  # extend to 18s minimum
+        log(f"  ⚠ Clip {clip.get('clip_number','')} was {dur:.0f}s — extended to 18s.")
+    elif dur > 25:
+        end = start + 23  # trim to 23s
+        log(f"  ⚠ Clip {clip.get('clip_number','')} was {dur:.0f}s — trimmed to 23s.")
     clip["end_sec"] = end
     clip["duration_seconds"] = end - start
     return clip
@@ -94,10 +94,8 @@ def _normalise_clip(raw: dict, idx: int) -> dict:
     raw["start_sec"] = start_sec
     raw["end_sec"]   = end_sec
     raw["clip_number"] = raw.get("clip_number", idx + 1)
-
-    # Ensure hook_script exists
-    if not raw.get("hook_script"):
-        raw["hook_script"] = "Wait, you are not ready for this."
+    
+    # We no longer require hook_script
 
     return _clamp_clip(raw)
 
@@ -164,10 +162,10 @@ def _robust_json_parse(raw: str) -> list:
 
 # ─── Gemini analysis ──────────────────────────────────────────────────────────
 
-def analyze_with_gemini(video_path: Path, youtube_url: Optional[str] = None) -> Optional[List[dict]]:
+def analyze_with_gemini(video_path: Path, youtube_url: Optional[str] = None, num_clips: int = 5, avoid_timestamps: str = "") -> Optional[List[dict]]:
     """
     Upload video to Gemini Files API (or use YouTube URL directly) and analyze with the master prompt.
-    Returns a list of up to 5 clip dicts, or None on failure.
+    Returns a list of up to `num_clips` clip dicts, or None on failure.
     """
     try:
         from google import genai
@@ -233,7 +231,7 @@ def analyze_with_gemini(video_path: Path, youtube_url: Optional[str] = None) -> 
                 log("  Video ready. Asking Gemini to find top 5 viral moments...")
 
             # Prepend URL to prompt if using youtube url
-            prompt = GEMINI_MASTER_PROMPT
+            prompt = get_gemini_master_prompt(num_clips, avoid_timestamps)
             if youtube_url:
                 prompt = f"Here is the YouTube video link: {youtube_url}\n\n" + prompt
 
@@ -245,7 +243,7 @@ def analyze_with_gemini(video_path: Path, youtube_url: Optional[str] = None) -> 
                 config=types.GenerateContentConfig(
                     response_mime_type="application/json",
                     temperature=0.35,
-                    max_output_tokens=4096,
+                    max_output_tokens=8192,
                 )
             )
 
@@ -284,18 +282,18 @@ def analyze_with_gemini(video_path: Path, youtube_url: Optional[str] = None) -> 
 
 # ─── Public entry point ───────────────────────────────────────────────────────
 
-def get_all_clips(video_path: Path, youtube_url: Optional[str] = None) -> List[dict]:
-    """Main entry — returns top 5 clips via Gemini."""
-    clips = analyze_with_gemini(video_path, youtube_url)
+def get_all_clips(video_path: Path, youtube_url: Optional[str] = None, num_clips: int = 5, avoid_timestamps: str = "") -> List[dict]:
+    """Main entry — returns top `num_clips` clips via Gemini."""
+    clips = analyze_with_gemini(video_path, youtube_url, num_clips, avoid_timestamps)
     if not clips:
         raise RuntimeError("Gemini analysis failed. PySceneDetect fallback has been disabled by user request.")
     return clips
 
 
 # Keep a single-clip alias for backwards compatibility
-def get_best_clip(video_path: Path, youtube_url: Optional[str] = None) -> dict:
+def get_best_clip(video_path: Path, youtube_url: Optional[str] = None, avoid_timestamps: str = "") -> dict:
     """Returns only the #1 highest-retention clip."""
-    return get_all_clips(video_path, youtube_url)[0]
+    return get_all_clips(video_path, youtube_url, avoid_timestamps=avoid_timestamps)[0]
 
 
 if __name__ == "__main__":

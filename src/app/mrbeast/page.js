@@ -33,10 +33,12 @@ export default function MrBeastDashboard() {
     4: COPYRIGHT_DISCLAIMER, 5: COPYRIGHT_DISCLAIMER,
   });
   const [uploadingClip, setUploadingClip] = useState(null);
+  const [uploadChannels, setUploadChannels] = useState({});
   
   const [quality, setQuality] = useState('high');
   const [videoSize, setVideoSize] = useState(null);
   const [generatedClips, setGeneratedClips] = useState([]);
+  const [avoidTimestamps, setAvoidTimestamps] = useState([]);
   
   const [videoKey, setVideoKey] = useState(Date.now());
   const videoRef = useRef(null);
@@ -71,6 +73,7 @@ export default function MrBeastDashboard() {
   const handleUpload = async (clipFile, clipNum) => {
     const title = uploadTitles[clipNum] || '';
     const desc = uploadDescriptions[clipNum] || '';
+    const selectedChannel = uploadChannels[clipNum] || 'mrbeast';
     
     if (!title.trim() || !desc.trim()) {
       alert('Add a title and description before uploading.');
@@ -88,7 +91,7 @@ export default function MrBeastDashboard() {
         body: JSON.stringify({ 
           title: title.trim(), 
           description: desc.trim(), 
-          channel: 'mrbeast',
+          channel: selectedChannel,
           videoFilename: clipFile
         }),
       });
@@ -119,16 +122,23 @@ export default function MrBeastDashboard() {
     setLoading(true);
     setVideoGenerated(false);
     setVideoSize(null);
-    setGeneratedClips([]);
     setLogs([]);
     setStatus('Initializing MrBeast Pipeline…');
     addLog(`Target: ${url.trim()}`);
+    
+    const avoidStr = avoidTimestamps.map(t => `${t.start}-${t.end}`).join(',');
 
     try {
       const response = await fetch(getApiUrl('/api/generate-mrbeast'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: url.trim(), gameplayUrl: gameplayUrl.trim(), quality }),
+        body: JSON.stringify({ 
+          url: url.trim(), 
+          gameplayUrl: gameplayUrl.trim(), 
+          quality, 
+          avoidTimestamps: avoidStr,
+          clipIndex: generatedClips.length + 1
+        }),
       });
 
       if (!response.ok) {
@@ -166,14 +176,21 @@ export default function MrBeastDashboard() {
                 const size = msg.split('FINAL_FILE_SIZE:')[1].trim();
                 setVideoSize(size);
               }
-              // Parse individual clip completions
+              if (msg.includes('"type": "clip_metadata"')) {
+                try {
+                  const meta = JSON.parse(msg);
+                  if (meta.type === 'clip_metadata') {
+                    setAvoidTimestamps(prev => [...prev, { start: meta.start, end: meta.end }]);
+                  }
+                } catch (e) {}
+              }
               const clipMatch = msg.match(/Clip (\d+) saved: (mrbeast_clip_\d+\.mp4)/);
               if (clipMatch) {
-                const clipNum = parseInt(clipMatch[1]);
+                const clipNum = generatedClips.length + 1; // Assign sequential number based on current count
                 const clipFile = clipMatch[2];
                 setGeneratedClips(prev => {
                   const next = [...prev];
-                  next[clipNum - 1] = { num: clipNum, file: clipFile, ts: Date.now() };
+                  next.push({ num: clipNum, file: clipFile, ts: Date.now() });
                   return next;
                 });
                 setVideoGenerated(true);
@@ -266,9 +283,9 @@ export default function MrBeastDashboard() {
               disabled={loading}
               style={{ ...s.btn, ...(loading ? s.btnDisabled : {}) }}
             >
-              {loading && !videoGenerated
+              {loading
                 ? 'Processing Pipeline...'
-                : 'Generate Viral Short'}
+                : generatedClips.length > 0 ? 'Generate Another Clip' : 'Generate Viral Short'}
             </button>
           </div>
 
@@ -286,36 +303,21 @@ export default function MrBeastDashboard() {
         {/* Right Col: Output Clips (appear one by one as each renders) */}
         <div style={s.card}>
           <h2 style={s.cardTitle}>
-            📱 Generated Clips {videoSize && <span style={{ color: '#34d399', fontSize: '1rem', float: 'right' }}>Clip 1 size: {videoSize}</span>}
+            📱 Generated Clips
           </h2>
-          {!videoGenerated && !loading && (
+          {generatedClips.length === 0 && !loading && (
             <div style={{ textAlign: 'center', color: '#64748b', padding: '4rem 0' }}>
-              5 Short clips will appear here as each one finishes.
+              Your generated clips will appear here one by one. Click "Generate" to start.
             </div>
           )}
-          {loading && generatedClips.filter(Boolean).length === 0 && (
+          {loading && (
             <div style={{ textAlign: 'center', color: '#64748b', padding: '4rem 0' }}>
-              Gemini is analyzing your video...<br/><br/>
-              <em>Clips will appear here one-by-one as they finish rendering.</em>
+              Gemini is analyzing your video and finding a fresh viral moment...<br/><br/>
+              <em>Your new clip will appear here shortly.</em>
             </div>
           )}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
-            {(loading || videoGenerated) && [1, 2, 3, 4, 5].map((num) => {
-              const clip = generatedClips[num - 1];
-              if (!clip) {
-                // Skeleton loading state for this clip
-                return (
-                  <div key={num} style={{ opacity: loading ? 0.5 : 0 }}>
-                    <p style={{ color: '#64748b', fontWeight: 'bold', marginBottom: '0.5rem' }}>
-                      Clip #{num} — processing...
-                    </p>
-                    <div style={{ width: '100%', maxWidth: '280px', margin: '0 auto', aspectRatio: '9/16', backgroundColor: '#1e293b', borderRadius: '8px', border: '2px dashed #334155', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <span style={{ color: '#64748b' }}>⏳</span>
-                    </div>
-                  </div>
-                );
-              }
-              // Finished clip
+            {generatedClips.map((clip, index) => {
               return (
                 <div key={clip.num}>
                   <p style={{ color: '#60a5fa', fontWeight: 'bold', marginBottom: '0.5rem' }}>
@@ -324,7 +326,7 @@ export default function MrBeastDashboard() {
                   <div style={{ width: '100%', maxWidth: '280px', margin: '0 auto', aspectRatio: '9/16', backgroundColor: 'black', borderRadius: '8px', overflow: 'hidden' }}>
                     <video
                       controls
-                      autoPlay
+                      autoPlay={index === generatedClips.length - 1} // only autoplay the latest
                       muted
                       loop
                       playsInline
@@ -359,6 +361,16 @@ export default function MrBeastDashboard() {
                       style={{ ...s.input, marginBottom: '0.75rem', padding: '0.5rem', minHeight: '60px', fontFamily: 'inherit' }}
                       disabled={uploadingClip === clip.num}
                     />
+                    <label style={{...s.label, fontSize: '0.9rem'}}>Target Channel</label>
+                    <select
+                      value={uploadChannels[clip.num] || 'mrbeast'}
+                      onChange={(e) => setUploadChannels({...uploadChannels, [clip.num]: e.target.value})}
+                      style={{ ...s.input, marginBottom: '0.75rem', padding: '0.5rem' }}
+                      disabled={uploadingClip === clip.num}
+                    >
+                      <option value="mrbeast">🎯 MrBeast Channel</option>
+                      <option value="minecraft">⛏️ Minecraft Channel</option>
+                    </select>
                     <button
                       onClick={() => handleUpload(clip.file, clip.num)}
                       disabled={uploadingClip === clip.num}
@@ -374,7 +386,7 @@ export default function MrBeastDashboard() {
                         opacity: uploadingClip === clip.num ? 0.7 : 1
                       }}
                     >
-                      {uploadingClip === clip.num ? '⏳ Uploading…' : '📤 Upload to MrBeast Channel'}
+                      {uploadingClip === clip.num ? '⏳ Uploading…' : '📤 Upload to YouTube'}
                     </button>
                   </div>
                 </div>

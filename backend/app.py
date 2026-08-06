@@ -37,6 +37,8 @@ class GenerateMrBeastRequest(BaseModel):
     url: str
     gameplayUrl: Optional[str] = None
     quality: Optional[str] = 'high'
+    avoidTimestamps: Optional[str] = None
+    clipIndex: Optional[int] = 1
 
 # ── History ──
 @app.get("/api/history")
@@ -171,7 +173,7 @@ async def generate_video(data: GenerateVideoRequest):
         media_type="application/x-ndjson"
     )
 
-async def stream_mrbeast_generation(url, gameplay_url, quality):
+async def stream_mrbeast_generation(url, gameplay_url, quality, avoid_timestamps=None, clip_index=1):
     script_path = os.path.join(os.getcwd(), 'scripts', 'mrbeast_generator.py')
     
     cmd = ["python3", "-u", script_path, "--url", url]
@@ -179,6 +181,9 @@ async def stream_mrbeast_generation(url, gameplay_url, quality):
         cmd.extend(["--gameplay-url", gameplay_url])
     if quality:
         cmd.extend(["--quality", quality])
+    if avoid_timestamps:
+        cmd.extend(["--avoid-timestamps", avoid_timestamps])
+    cmd.extend(["--clip-index", str(clip_index)])
 
     env = {
         **os.environ,
@@ -211,7 +216,7 @@ async def generate_mrbeast(data: GenerateMrBeastRequest):
         raise HTTPException(status_code=400, detail="Provide a valid main video URL.")
 
     return StreamingResponse(
-        stream_mrbeast_generation(data.url, data.gameplayUrl, data.quality),
+        stream_mrbeast_generation(data.url, data.gameplayUrl, data.quality, data.avoidTimestamps, data.clipIndex),
         media_type="application/x-ndjson"
     )
 

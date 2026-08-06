@@ -26,6 +26,7 @@ import time
 import shutil
 import subprocess
 import textwrap
+import hashlib
 from pathlib import Path
 from typing import Optional, List, Tuple, Dict, Any
 
@@ -138,7 +139,8 @@ def load_font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont:
 # ─── Stage 1: Download main video ─────────────────────────────────────────────
 
 def download_main(url: str, work_dir: Path) -> Path:
-    out = work_dir / "main_raw.mp4"
+    url_hash = hashlib.md5(url.encode()).hexdigest()[:8]
+    out = work_dir / f"main_raw_{url_hash}.mp4"
     if out.exists():
         log("  Using cached main video.")
         return out
@@ -304,15 +306,18 @@ def _center_crop(video_path: Path, start_sec: float, end_sec: float, out_path: P
 # ─── Stage 4: Download Gameplay ────────────────────────────────────────────────
 
 def get_gameplay(gameplay_url: Optional[str], work_dir: Path) -> Path:
-    if GAMEPLAY_CACHE.exists() and GAMEPLAY_CACHE.stat().st_size > 1024 * 100:
-        log("  Using cached gameplay video.")
-        return GAMEPLAY_CACHE
-
     url = gameplay_url or GAMEPLAY_YT_URL
+    url_hash = hashlib.md5(url.encode()).hexdigest()[:8]
+    out = work_dir / f"gameplay_raw_{url_hash}.mp4"
+    
+    if out.exists() and out.stat().st_size > 1024 * 100:
+        log("  Using cached gameplay video.")
+        return out
+
     log(f"  Downloading gameplay: {url}")
-    if ytdlp_download(url, GAMEPLAY_CACHE):
+    if ytdlp_download(url, out):
         log("  ✅ Gameplay downloaded.")
-        return GAMEPLAY_CACHE
+        return out
     raise RuntimeError("Failed to download gameplay video.")
 
 
@@ -760,6 +765,9 @@ def main():
     parser.add_argument("--url", required=True, help="Main video YouTube URL")
     parser.add_argument("--gameplay-url", default=None, help="Gameplay bottom-screen URL (optional)")
     parser.add_argument("--quality", default="high", choices=["low", "medium", "high"], help="Video quality preset")
+    parser.add_argument("--num-clips", type=int, default=1, help="Number of short clips to extract (default 1)")
+    parser.add_argument("--avoid-timestamps", default="", help="Comma separated ranges to avoid, e.g. 10:20-10:50")
+    parser.add_argument("--clip-index", type=int, default=1, help="Offset for clip naming (e.g. 1, 2, 3...)")
     args = parser.parse_args()
 
     if args.quality == "low":
@@ -785,8 +793,7 @@ def main():
     TOP_H    = TARGET_H - BOTTOM_H
 
     import shutil
-    if WORK_DIR.exists():
-        shutil.rmtree(WORK_DIR, ignore_errors=True)
+    # Do not delete WORK_DIR here so that videos remain cached.
     WORK_DIR.mkdir(parents=True, exist_ok=True)
     OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
 
@@ -797,11 +804,11 @@ def main():
     log("[1/5] Downloading main video...")
     main_raw = download_main(args.url, WORK_DIR)
 
-    # ── 2. Gemini AI analysis — find top 5 viral moments (20-40s each)
-    log("[2/5] Asking Gemini AI to find top 5 viral moments...")
+    # ── 2. Gemini AI analysis — find top N viral moments (20-40s each)
+    log(f"[2/5] Asking Gemini AI to find top {args.num_clips} viral moments...")
     sys.path.insert(0, str(SCRIPT_DIR))
     from gemini_analyzer import get_all_clips
-    all_clips = get_all_clips(main_raw, args.url)
+    all_clips = get_all_clips(main_raw, args.url, num_clips=args.num_clips, avoid_timestamps=args.avoid_timestamps)
     log(f"  Gemini identified {len(all_clips)} clips to process.")
 
     has_gameplay = args.gameplay_url is not None
@@ -823,8 +830,9 @@ def main():
     log(f"[4/5] Generating {len(all_clips)} Short clips...")
     generated_paths = []
 
-    for clip_data in all_clips:
-        cn         = clip_data.get("clip_number", 1)
+    for i, clip_data in enumerate(all_clips):
+        cn = args.clip_index + i
+        log(f"\n=== Processing Clip {cn} / {args.clip_index + len(all_clips) - 1} ===")
         start_sec  = clip_data["start_sec"]
         end_sec    = clip_data["end_sec"]
         dur        = clip_data["duration_seconds"]
@@ -847,25 +855,11 @@ def main():
         dual_silent = clip_dir / "dual_silent.mp4"
         compose_dual_screen(top_tracked, gameplay_cropped, dual_silent, dur)
 
-        # Create Hybrid Audio (AI Hook + Original Audio)
+        # Create Audio (Original Audio Only)
         combined_audio = clip_dir / "combined_audio.wav"
         
-        if hook_script:
-            log(f"  Hook: \"{hook_script[:80]}...\"")
-            script_file = clip_dir / "vo_script.txt"
-            script_file.write_text(hook_script, encoding="utf-8")
-            
-            # Generate TTS for just the hook
-            tts_audio = _generate_tts_voiceover(hook_script, clip_dir)
-            if tts_audio and tts_audio.exists():
-                # Merge TTS and original audio
-                create_hybrid_audio(main_raw, tts_audio, start_sec, dur, combined_audio)
-            else:
-                log("  TTS failed. Falling back to extracting original audio only.")
-                subprocess.run(["ffmpeg", "-y", "-ss", str(start_sec), "-t", str(dur), "-i", str(main_raw), "-q:a", "0", "-map", "a", str(combined_audio)], capture_output=True)
-        else:
-            log("  No hook script. Using original audio only.")
-            subprocess.run(["ffmpeg", "-y", "-ss", str(start_sec), "-t", str(dur), "-i", str(main_raw), "-q:a", "0", "-map", "a", str(combined_audio)], capture_output=True)
+        log("  Using original audio only (No AI voice).")
+        subprocess.run(["ffmpeg", "-y", "-ss", str(start_sec), "-t", str(dur), "-i", str(main_raw), "-q:a", "0", "-map", "a", str(combined_audio)], capture_output=True)
 
         # Run Whisper on the final combined audio for perfect timing
         log("  Running Whisper on combined audio...")
@@ -888,6 +882,9 @@ def main():
         mux_and_encode(captioned_video, mutated_audio, clip_out)
         generated_paths.append(clip_out)
         log(f"  Clip {cn} saved: {clip_out.name}")
+        
+        # Log metadata for frontend infinite generation
+        log(json.dumps({"type": "clip_metadata", "clip_number": cn, "start": start_sec, "end": end_sec, "file": clip_out.name}))
 
     # Also copy clip 1 as the default preview output
     if generated_paths:

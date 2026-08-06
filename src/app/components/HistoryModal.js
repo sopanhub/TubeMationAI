@@ -46,6 +46,7 @@ export default function HistoryModal({ channel, onClose }) {
   const [deleting, setDeleting] = useState(null);
   const [uploading, setUploading] = useState(null);
   const [error, setError] = useState(null);
+  const [uploadChannels, setUploadChannels] = useState({});
 
   const accent = channel === 'mrbeast' ? '#ef4444' : '#22d3ee';
   const label  = channel === 'mrbeast' ? 'MrBeast' : 'Minecraft';
@@ -54,7 +55,7 @@ export default function HistoryModal({ channel, onClose }) {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(getApiUrl(`/api/history?channel=${channel}`));
+      const res = await fetch(getApiUrl(`/api/history?channel=all`));
       const data = await res.json();
       if (data.error) throw new Error(data.error);
       setFiles(data.files || []);
@@ -93,15 +94,16 @@ export default function HistoryModal({ channel, onClose }) {
     if (!title) return;
     
     setUploading(file.name);
+    const selectedChannel = uploadChannels[file.name] || file.channel;
     try {
       const res = await fetch(getApiUrl('/api/upload-video'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          channel: file.channel,
+          channel: selectedChannel,
           videoFilename: file.name,
           title: title,
-          description: file.channel === 'mrbeast' ? MRBEAST_DESC : MINECRAFT_DESC,
+          description: selectedChannel === 'mrbeast' ? MRBEAST_DESC : MINECRAFT_DESC,
         }),
       });
       const data = await res.json();
@@ -280,6 +282,14 @@ export default function HistoryModal({ channel, onClose }) {
 
                 {/* Actions */}
                 <div style={actionsArea}>
+                  <select
+                    value={uploadChannels[file.name] || file.channel}
+                    onChange={(e) => setUploadChannels({ ...uploadChannels, [file.name]: e.target.value })}
+                    style={{ padding: '0.3rem', borderRadius: '6px', backgroundColor: '#0f172a', color: 'white', border: '1px solid #334155', fontSize: '0.8rem', width: '100%' }}
+                  >
+                    <option value="mrbeast">🎯 MrBeast</option>
+                    <option value="minecraft">⛏️ Minecraft</option>
+                  </select>
                   <button
                     onClick={() => handleUpload(file)}
                     disabled={isUp}
