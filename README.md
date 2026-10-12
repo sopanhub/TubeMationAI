@@ -1,110 +1,138 @@
-# Video Automation Studio (TubeMationAI)
+<div align="center">
 
-A powerful, AI-driven automation suite that creates viral YouTube Shorts from long-form content automatically. 
+# 🎬 TubeMationAI
 
-## Features
-- **Minecraft Shaders Pipeline**: Analyzes long gameplay videos using Gemini to find before/after shader comparisons, cuts them perfectly, adds voiceover using Edge-TTS, and burns in word-level captions.
-- **MrBeast & Streamers Pipeline**: Advanced face tracking, split-screen gameplay integration (e.g., GTA V parkour below the facecam), animated Impact captions, and dynamic audio masking for viral streamer clips.
-- **Web Interface**: Clean, premium Next.js dashboard to manage generations, view history, and preview clips.
-- **Settings UI**: Configure all API keys (Gemini, Groq, YouTube) securely through the web interface without manually modifying the `.env` file.
-- **YouTube Auto-Upload**: Push generated Shorts directly to YouTube right from the dashboard history.
+### Turn any long video into a published YouTube Short, with zero manual steps
+
+AI picks the best moment · tracks the face · adds captions · uploads for you
+
+![Next.js](https://img.shields.io/badge/Next.js-000000?style=flat-square&logo=nextdotjs&logoColor=white)
+![Python](https://img.shields.io/badge/Python-3776AB?style=flat-square&logo=python&logoColor=white)
+![Gemini](https://img.shields.io/badge/Gemini-8E75B2?style=flat-square&logo=googlegemini&logoColor=white)
+![OpenCV](https://img.shields.io/badge/OpenCV-5C3EE8?style=flat-square&logo=opencv&logoColor=white)
+![FFmpeg](https://img.shields.io/badge/FFmpeg-007808?style=flat-square&logo=ffmpeg&logoColor=white)
+![License](https://img.shields.io/badge/Open_Source-Yes-brightgreen?style=flat-square)
+
+<!-- TODO: add a demo GIF showing URL in -> Short out. This matters more than anything else in this README. -->
+<!-- ![Demo](./docs/demo.gif) -->
+
+</div>
 
 ---
 
-## Prerequisites
-Before you start, ensure you have the following installed on your system:
-- **Node.js** (v18 or higher)
-- **Python** (v3.10 or higher)
-- **FFmpeg** (Must be installed and accessible on your system's `PATH`)
+## 📌 Overview
+
+Making Shorts from long videos by hand means finding the best part, cropping to vertical, adding captions and uploading. **TubeMationAI does all of that automatically.**
+
+Give it a long-form video URL. It returns a **published YouTube Short**.
 
 ---
 
-## Step-by-Step Setup Guide
+## ✨ Features
 
-### 1. Clone the repository
+- 🧠 **AI segment selection:** Gemini reads the transcript and picks the most engaging segment
+- 🎙️ **Voiceover hook:** Gemini writes a short hook for the opening
+- 🙂 **Face tracking:** frame-by-frame tracking (MediaPipe + OpenCV) for a clean 9:16 crop
+- 💬 **Word-level captions:** Whisper timestamps, rendered with FFmpeg
+- 📤 **Automated upload:** the final Short is published to YouTube with no manual steps
+- 🖥️ **Web interface:** Next.js frontend connected to a Python backend
+
+---
+
+## 🏗️ How It Works
+
+```mermaid
+flowchart TD
+    A[Long-form video URL] --> B[Download video]
+    B --> C[Whisper: transcript with word-level timestamps]
+    C --> D[Gemini: select most engaging segment + write voiceover hook]
+    D --> E[Cut the segment]
+    E --> F[MediaPipe + OpenCV: face tracking]
+    F --> G[9:16 crop following the speaker]
+    G --> H[FFmpeg: render word-level captions]
+    H --> I[Upload to YouTube]
+    I --> J[Published Short]
+```
+
+---
+
+## 🛠️ Tech Stack
+
+| Layer | Tools |
+|---|---|
+| Frontend | Next.js |
+| Backend | Python |
+| LLM | Google Gemini API |
+| Speech-to-text | OpenAI Whisper |
+| Computer vision | OpenCV, MediaPipe |
+| Video processing | FFmpeg |
+| Publishing | YouTube upload automation |
+
+---
+
+## 🚀 Getting Started
+
+> TODO: check these steps against your repo before publishing.
+
+### Prerequisites
+- Python 3.x
+- Node.js 18+
+- FFmpeg installed and on your PATH
+- A Gemini API key
+- YouTube API credentials (for auto-upload)
+
+### Setup
+
 ```bash
 git clone https://github.com/sopanhub/TubeMationAI.git
 cd TubeMationAI
-```
 
-### 2. Install Node.js Dependencies
-Install the required packages for the Next.js frontend:
-```bash
-npm install
-```
-
-### 3. Install Python Dependencies
-Install the required packages for the AI video processing scripts:
-```bash
+# Backend
 pip install -r requirements.txt
-```
 
-### 4. Install FFmpeg
-FFmpeg is required by `moviepy` to process and render videos.
-- **Mac**: `brew install ffmpeg`
-- **Windows**: Download from [gyan.dev](https://www.gyan.dev/ffmpeg/builds/) or use `winget install ffmpeg`
-- **Linux**: `sudo apt install ffmpeg`
-
-Verify it is installed by running `ffmpeg -version` in your terminal.
-
-### 5. Setup Environment Variables
-You can configure your environment variables either manually or through the Web UI.
-
-**Manual Setup:**
-```bash
-cp .env.example .env
-```
-Open the `.env` file and fill in your keys.
-
-**UI Setup:**
-Once the app is running (see Step 7), click the **⚙️ Settings** button on the homepage to enter your keys safely. 
-- **Gemini API Key** (Required for video analysis)
-- **Groq API Key** (Optional - for Magic Edit voice/captioning)
-- **YouTube OAuth Credentials** (Optional - to upload videos directly)
-
-### 6. Generate YouTube OAuth Tokens (Optional)
-If you want to use the auto-upload feature to push shorts to YouTube automatically, you must generate a refresh token.
-1. Create OAuth 2.0 Client IDs in the [Google Cloud Console](https://console.cloud.google.com/). Ensure the "YouTube Data API v3" is enabled.
-2. Run the included helper script:
-```bash
-python3 scripts/generate_youtube_token.py
-```
-3. Follow the on-screen instructions to log into your Google Account.
-4. Copy the generated Refresh Token and paste it into the Web Settings UI (or your `.env` file).
-
-### 7. Run the Application
-Start the development server. This command will launch both the Next.js frontend and the Python FastAPI backend.
-```bash
+# Frontend
+cd frontend   # TODO: use your real folder name
+npm install
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) in your browser.
+### Environment variables
+
+> TODO: replace with your real variable names.
+
+| Variable | Purpose |
+|---|---|
+| `GEMINI_API_KEY` | Segment selection and hook writing |
+| `YOUTUBE_*` | Authorised upload to your channel |
 
 ---
 
-## How to Use the App
+## 🎯 Usage
 
-### Minecraft Shaders Pipeline
-1. Go to the **Minecraft Shaders** page.
-2. Paste a YouTube URL of a long-form Minecraft shader showcase video.
-3. Click **Generate**.
-4. Gemini will watch the video, detect the "before" and "after" transition moments, and automatically slice the best clips.
-5. The pipeline generates an AI voiceover, overlays captions, and renders a 9:16 vertical short.
-
-### MrBeast & Streamers Pipeline
-1. Go to the **MrBeast & Streamers** page.
-2. Paste a YouTube URL of a streamer or talking-head video.
-3. Paste a "Gameplay URL" (optional) for the split-screen bottom half (e.g., GTA V parkour).
-4. Click **Generate**.
-5. The pipeline uses AI face-tracking to keep the speaker centered, adds engaging animated captions, and mixes the audio.
-
-### Managing Videos
-- View your previously generated clips by clicking the **History** button in either pipeline.
-- From the History modal, you can **Download** the video locally or click **Upload to YT** to push it directly to your channel.
+1. Open the web interface
+2. Paste a long-form video URL
+3. Start the pipeline
+4. Get a published YouTube Short
 
 ---
 
-## Troubleshooting
-- **Python script fails / command not found**: Ensure you are using `python3` and that your virtual environment (if you use one) is activated.
-- **Missing `ffprobe` or `ffmpeg`**: Ensure FFmpeg is installed and added to your system's PATH variables. Restart your terminal after installing.
-- **Missing API Keys error**: Ensure you have configured your Gemini API key in the web settings.
+## 🗺️ Roadmap
+
+> TODO: keep only ideas you really plan to build.
+
+- [ ] Multiple caption styles
+- [ ] Batch processing
+- [ ] Scheduling uploads
+
+---
+
+## ⚠️ Responsible Use
+
+Only process videos you own or have permission to use. Follow YouTube's Terms of Service and the original creator's rights.
+
+---
+
+## 👤 Author
+
+**Sopan Patil** · Full-Stack & AI Developer
+[GitHub](https://github.com/sopanhub) · [LinkedIn](https://www.linkedin.com/in/sopan-patil-24b2a1380) · [patilsopan4148@gmail.com](mailto:patilsopan4148@gmail.com)
